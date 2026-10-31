@@ -1,0 +1,28 @@
+# Disposable, isolated test stack. These are public CI-only fixture credentials.
+name: worker-validation-lab-integration
+services:
+  db-test:
+    image: postgres:16.13-alpine
+    environment:
+      POSTGRES_USER: workerlab_test
+      POSTGRES_DB: workerlab_test
+      POSTGRES_PASSWORD: ci-only-postgres-password-not-for-production
+    tmpfs: [/var/lib/postgresql/data]
+    healthcheck: { test: ['CMD-SHELL', 'pg_isready -U workerlab_test -d workerlab_test'], interval: 2s, timeout: 3s, retries: 30 }
+  queue-test:
+    image: nats:2.12.11-alpine
+    command: ['--jetstream', '--store_dir', '/data', '--user', 'ci_test', '--pass', 'ci-only-nats-password-not-for-production']
+    tmpfs: [/data]
+  integration:
+    build: { context: ., target: dependencies }
+    working_dir: /app
+    user: node
+    volumes: ['./src:/app/src:ro', './public:/app/public:ro', './migrations:/app/migrations:ro', './test:/app/test:ro']
+    environment:
+      RUN_INTEGRATION: '1'
+      TEST_DATABASE_URL: postgresql://workerlab_test:ci-only-postgres-password-not-for-production@db-test:5432/workerlab_test
+      TEST_NATS_URL: nats://ci_test:ci-only-nats-password-not-for-production@queue-test:4222
+    depends_on:
+      db-test: { condition: service_healthy }
+      queue-test: { condition: service_started }
+    command: ['node', '--test', 'test/integration/system.test.js']
